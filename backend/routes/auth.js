@@ -7,6 +7,7 @@ const twilio = require('twilio');
 const { sha256 } = require('../utils/hashing');
 const {
   verifyBorrower,
+  signupVerification,  // NEW: For signup without face comparison
   extractEmbedding,
   cosineSimilarity,
   hashDocument,
@@ -450,28 +451,28 @@ router.post('/verify-face', upload.fields([{ name: 'faceImage' }, { name: 'aadha
       });
     }
 
-    // STEP 2: Biometric Verification (Face + Document)
-    console.log('🔐 Step 2: Biometric Verification...');
+    // STEP 2: Biometric Data Capture WITH OCR MATCHING
+    console.log('🔐 Step 2: Capturing biometric data + OCR verification...');
 
-    // Use REAL verifyBorrower function with all security checks
+    // Use signupVerification - captures data AND verifies name/Aadhaar match
     const txnId = `TXN-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    const result = await verifyBorrower(faceImage, aadharImage, txnId, 0.6);
+    const result = await signupVerification(
+      faceImage,
+      aadharImage,
+      txnId,
+      user.fullName,      // Pass entered name for OCR matching
+      user.aadharNumber   // Pass entered Aadhaar for OCR matching
+    );
 
     if (!result.verified) {
       return res.status(400).json({
         success: false,
-        error: result.error || 'Biometric verification failed',
-        score: result.score?.toFixed(3),
-        stage: 'biometric',
-        details: {
-          faceMatch: result.score,
-          liveness: result.liveness,
-          documentValid: result.documentValid
-        }
+        error: result.error || 'Biometric data capture failed',
+        stage: 'biometric'
       });
     }
 
-    console.log('✅ Biometric verification passed with score:', result.score.toFixed(3));
+    console.log('✅ Biometric data captured successfully');
 
     // STEP 3: Update user with verified status and REAL data
     console.log('💾 Step 3: Saving verification data...');
@@ -511,20 +512,19 @@ router.post('/verify-face', upload.fields([{ name: 'faceImage' }, { name: 'aadha
     res.json({
       success: true,
       verified: true,
-      score: result.score.toFixed(3),
-      message: 'DigiLocker + Biometric verification complete. OTP sent.',
+      message: 'DigiLocker + Biometric data captured. OTP sent.',
       details: {
         digilocker: {
           verified: true,
-          aadhaarNumber: digilockerResult.aadhaarNumber?.replace(/.(?=.{4})/g, 'X'), // Masked
+          aadhaarNumber: digilockerResult.aadhaarNumber?.replace(/.(?=.{4})/g, 'X'),
           name: digilockerResult.name,
           simulatedMode: digilockerResult.simulatedMode || false
         },
         biometric: {
-          faceMatch: result.score.toFixed(3),
+          faceEmbeddingStored: true,
+          documentHashStored: true,
           liveness: result.liveness,
-          documentValid: result.documentValid,
-          hashGenerated: true
+          message: 'No face comparison performed (stored for future loan verification)'
         }
       }
     });

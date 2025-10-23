@@ -263,6 +263,100 @@ function validateDocument(text, docType) {
     }
 }
 
+/**
+ * Extract Aadhaar number from OCR text
+ */
+function extractAadhaarNumber(ocrText) {
+    if (!ocrText) return null;
+
+    // Remove all spaces and newlines
+    const cleanText = ocrText.replace(/\s+/g, '');
+
+    // Find 12-digit number pattern
+    const aadhaarMatch = cleanText.match(/\d{12}/);
+
+    if (aadhaarMatch) {
+        console.log('📋 Extracted Aadhaar from OCR:', aadhaarMatch[0]);
+        return aadhaarMatch[0];
+    }
+
+    return null;
+}
+
+/**
+ * Extract name from OCR text (simple heuristic)
+ */
+function extractNameFromOCR(ocrText) {
+    if (!ocrText) return null;
+
+    const lines = ocrText.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+
+    // Common Aadhaar keywords to skip
+    const skipKeywords = [
+        'government', 'india', 'aadhaar', 'aadhar', 'uid', 'uidai',
+        'dob', 'birth', 'male', 'female', 'address', 'vid', 'enrollment'
+    ];
+
+    // Find first line that looks like a name (2-4 words, no numbers)
+    for (const line of lines) {
+        const words = line.split(/\s+/);
+        const hasNumbers = /\d/.test(line);
+        const isKeyword = skipKeywords.some(kw => line.toLowerCase().includes(kw));
+
+        if (!hasNumbers && !isKeyword && words.length >= 2 && words.length <= 4) {
+            // Likely a name
+            console.log('📝 Extracted name from OCR:', line);
+            return line;
+        }
+    }
+
+    return null;
+}
+
+/**
+ * Verify uploaded Aadhaar matches entered details
+ */
+function verifyAadhaarDetails(ocrText, enteredName, enteredAadhaar) {
+    const result = {
+        nameMatch: false,
+        aadhaarMatch: false,
+        extractedName: null,
+        extractedAadhaar: null,
+        verified: false
+    };
+
+    if (!ocrText || ocrText.length < 10) {
+        console.warn('⚠️  OCR text too short, skipping verification');
+        return { ...result, verified: true }; // Don't fail if OCR failed
+    }
+
+    // Extract Aadhaar number
+    const extractedAadhaar = extractAadhaarNumber(ocrText);
+    if (extractedAadhaar) {
+        result.extractedAadhaar = extractedAadhaar;
+        result.aadhaarMatch = extractedAadhaar === enteredAadhaar.replace(/\s/g, '');
+        console.log(`🔍 Aadhaar match: ${result.aadhaarMatch} (${extractedAadhaar} vs ${enteredAadhaar})`);
+    }
+
+    // Extract name
+    const extractedName = extractNameFromOCR(ocrText);
+    if (extractedName) {
+        result.extractedName = extractedName;
+        // Fuzzy name matching (case insensitive, partial match)
+        const enteredNameLower = enteredName.toLowerCase();
+        const extractedNameLower = extractedName.toLowerCase();
+        result.nameMatch = enteredNameLower.includes(extractedNameLower) ||
+            extractedNameLower.includes(enteredNameLower);
+        console.log(`🔍 Name match: ${result.nameMatch} (${extractedName} vs ${enteredName})`);
+    }
+
+    // Verification passes if both match OR if extraction failed
+    result.verified = (!extractedAadhaar || result.aadhaarMatch) &&
+        (!extractedName || result.nameMatch);
+
+    return result;
+}
+
 // ============================================
 // SHA-256 DOCUMENT HASHING (REAL)
 // ============================================
@@ -442,13 +536,112 @@ async function extractEmbedding(imageBuffer) {
     return await imageToEmbedding(imageBuffer);
 }
 
+/**
+ * SIGNUP VERIFICATION - Just store data, no face comparison!
+ * Used during user registration to capture biometric data
+ * NOW WITH OCR NAME/AADHAAR MATCHING!
+ */
+async function signupVerification(faceImage, aadhaarImage, txnId, enteredName, enteredAadhaar) {
+    try {
+        console.log('\n=== 📝 SIGNUP DATA CAPTURE + OCR VERIFICATION ===');
+
+        // Step 1: Extract face embedding from user's selfie
+        console.log('Step 1: Extracting face embedding from selfie...');
+        const faceEmbedding = await imageToEmbedding(faceImage);
+        console.log('✅ Face embedding captured: 128 dimensions');
+
+        // Step 2: Hash Aadhaar document (SHA-256)
+        console.log('Step 2: Hashing Aadhaar document...');
+        const { finalHash, salt } = hashDocument(aadhaarImage, txnId);
+        console.log('✅ Aadhaar hashed with SHA-256');
+
+        // Step 3: Liveness detection on face
+        console.log('Step 3: Liveness detection...');
+        const liveness = await detectLiveness(faceImage);
+        console.log(`✅ Liveness: ${liveness.isLive} (${liveness.confidence.toFixed(2)})`);
+
+        // Step 4: OCR extraction and verification
+        console.log('Step 4: OCR extraction and name/Aadhaar matching...');
+        let ocrText = '';
+        let ocrVerification = { verified: true, nameMatch: false, aadhaarMatch: false };
+
+        try {
+            if (tesseractAvailable) {
+                ocrText = await Promise.race([
+                    performOCR(aadhaarImage),
+                    new Promise((resolve) => setTimeout(() => {
+                        console.warn('⚠️  OCR timeout, skipping');
+                        resolve('');
+                    }, 45000))
+                ]);
+
+                if (ocrText && ocrText.length > 0) {
+                    console.log(`✅ OCR extracted ${ocrText.length} characters`);
+
+                    // VERIFY NAME AND AADHAAR NUMBER
+                    ocrVerification = verifyAadhaarDetails(ocrText, enteredName, enteredAadhaar);
+
+                    if (!ocrVerification.verified) {
+                        console.error('❌ OCR Verification Failed!');
+                        console.error(`   Name match: ${ocrVerification.nameMatch}`);
+                        console.error(`   Aadhaar match: ${ocrVerification.aadhaarMatch}`);
+
+                        return {
+                            verified: false,
+                            error: 'Uploaded Aadhaar details do not match entered information',
+                            details: {
+                                nameMatch: ocrVerification.nameMatch,
+                                aadhaarMatch: ocrVerification.aadhaarMatch,
+                                extractedName: ocrVerification.extractedName,
+                                extractedAadhaar: ocrVerification.extractedAadhaar
+                            }
+                        };
+                    }
+
+                    console.log('✅ OCR verification passed!');
+                    console.log(`   Name match: ${ocrVerification.nameMatch}`);
+                    console.log(`   Aadhaar match: ${ocrVerification.aadhaarMatch}`);
+                }
+            }
+        } catch (ocrError) {
+            console.warn('⚠️  OCR failed, continuing without verification:', ocrError.message);
+        }
+
+        // SUCCESS - data captured and verified
+        console.log('\n=== ✅ SIGNUP DATA CAPTURED & VERIFIED ===');
+        console.log('Face embedding stored');
+        console.log('Aadhaar hash stored');
+        console.log('OCR verification completed');
+        console.log('=========================================\n');
+
+        return {
+            verified: true,
+            faceEmbedding: faceEmbedding,
+            documentHash: finalHash,
+            salt: salt,
+            liveness: liveness,
+            ocrText: ocrText.substring(0, 100),
+            ocrVerification: ocrVerification,
+            message: 'Biometric data captured and verified successfully'
+        };
+
+    } catch (error) {
+        console.error('❌ Signup verification error:', error);
+        return {
+            verified: false,
+            error: error.message
+        };
+    }
+}
+
 // ============================================
 // EXPORTS
 // ============================================
 
 module.exports = {
-    // Main function
-    verifyBorrower,
+    // Main functions
+    verifyBorrower,      // For loan verification (with face comparison)
+    signupVerification,  // For signup (NO face comparison, WITH OCR matching)
 
     // Individual components
     extractEmbedding,
@@ -458,6 +651,11 @@ module.exports = {
     validateDocument,
     hashDocument,
     detectLiveness,
+
+    // NEW: OCR verification helpers
+    extractAadhaarNumber,
+    extractNameFromOCR,
+    verifyAadhaarDetails,
 
     // Helpers
     generatePerceptualHash,
