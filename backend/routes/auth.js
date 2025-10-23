@@ -13,6 +13,12 @@ const {
   performOCR,
   detectLiveness
 } = require('../utils/verification');
+const {
+  verifyAadhaarDocument,
+  validateAadhaarNumber,
+  getAuthorizationUrl,
+  getAccessToken
+} = require('../utils/digilocker');
 const User = require('../models/User');
 const router = express.Router();
 
@@ -398,6 +404,55 @@ router.post('/verify-face', upload.fields([{ name: 'faceImage' }, { name: 'aadha
   try {
     console.log('🔍 Starting REAL biometric verification for:', email);
 
+    // Get user details for DigiLocker verification
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ success: false, error: 'User not found' });
+    }
+
+    // STEP 1: DigiLocker Aadhaar Verification
+    console.log('📋 Step 1: DigiLocker Aadhaar Verification...');
+
+    let digilockerResult;
+    try {
+      // Validate Aadhaar number format
+      if (!validateAadhaarNumber(user.aadharNumber)) {
+        console.warn('⚠️  Invalid Aadhaar number format');
+      }
+
+      // Verify Aadhaar from DigiLocker
+      digilockerResult = await verifyAadhaarDocument(
+        user.aadharNumber,
+        user.fullName,
+        req.body.digilockerToken, // Optional: from OAuth flow
+        req.body.docUri // Optional: specific document URI
+      );
+
+      if (!digilockerResult.verified) {
+        return res.status(400).json({
+          success: false,
+          error: 'DigiLocker verification failed: ' + (digilockerResult.error || 'Invalid document'),
+          stage: 'digilocker'
+        });
+      }
+
+      console.log('✅ DigiLocker verification successful');
+      console.log('   Aadhaar Number:', digilockerResult.aadhaarNumber);
+      console.log('   Name:', digilockerResult.name);
+      console.log('   Simulated Mode:', digilockerResult.simulatedMode || false);
+
+    } catch (digilockerError) {
+      console.error('❌ DigiLocker verification error:', digilockerError.message);
+      return res.status(400).json({
+        success: false,
+        error: 'DigiLocker verification failed: ' + digilockerError.message,
+        stage: 'digilocker'
+      });
+    }
+
+    // STEP 2: Biometric Verification (Face + Document)
+    console.log('🔐 Step 2: Biometric Verification...');
+
     // Use REAL verifyBorrower function with all security checks
     const txnId = `TXN-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const result = await verifyBorrower(faceImage, aadharImage, txnId, 0.6);
@@ -405,8 +460,9 @@ router.post('/verify-face', upload.fields([{ name: 'faceImage' }, { name: 'aadha
     if (!result.verified) {
       return res.status(400).json({
         success: false,
-        error: result.error || 'Verification failed',
+        error: result.error || 'Biometric verification failed',
         score: result.score?.toFixed(3),
+        stage: 'biometric',
         details: {
           faceMatch: result.score,
           liveness: result.liveness,
@@ -415,13 +471,10 @@ router.post('/verify-face', upload.fields([{ name: 'faceImage' }, { name: 'aadha
       });
     }
 
-    console.log('✅ Verification passed with score:', result.score.toFixed(3));
+    console.log('✅ Biometric verification passed with score:', result.score.toFixed(3));
 
-    // Update user with verified status and REAL data
-    const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(404).json({ success: false, error: 'User not found' });
-    }
+    // STEP 3: Update user with verified status and REAL data
+    console.log('💾 Step 3: Saving verification data...');
 
     user.faceVerified = true;
     user.kycVerified = true;
@@ -429,26 +482,50 @@ router.post('/verify-face', upload.fields([{ name: 'faceImage' }, { name: 'aadha
     user.aadharHash = result.documentHash; // REAL SHA-256 hash
     user.aadharSalt = result.salt; // Security salt
     user.lastFaceVerification = new Date();
+
+    // Store DigiLocker verification data
+    user.digilockerVerified = true;
+    user.digilockerData = {
+      verified: digilockerResult.verified,
+      verifiedAt: new Date(),
+      aadhaarNumber: digilockerResult.aadhaarNumber,
+      name: digilockerResult.name,
+      dob: digilockerResult.dob,
+      simulatedMode: digilockerResult.simulatedMode || false
+    };
+
     await user.save();
 
-    console.log('✅ User data updated with REAL embeddings and hash');
+    console.log('✅ User data updated with REAL embeddings, hash, and DigiLocker verification');
 
-    // Send OTP
+    // STEP 4: Send OTP
+    console.log('📱 Step 4: Sending OTP...');
+
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     otpStore[email] = otp;
     await sendOTP(user.phone, otp);
 
     console.log('✅ OTP sent to:', user.phone);
+    console.log('\n=== ✅ COMPLETE VERIFICATION SUCCESSFUL ===\n');
 
     res.json({
       success: true,
       verified: true,
       score: result.score.toFixed(3),
-      message: 'Face and document verified with REAL ML. OTP sent.',
+      message: 'DigiLocker + Biometric verification complete. OTP sent.',
       details: {
-        liveness: result.liveness,
-        documentValid: result.documentValid,
-        hashGenerated: true
+        digilocker: {
+          verified: true,
+          aadhaarNumber: digilockerResult.aadhaarNumber?.replace(/.(?=.{4})/g, 'X'), // Masked
+          name: digilockerResult.name,
+          simulatedMode: digilockerResult.simulatedMode || false
+        },
+        biometric: {
+          faceMatch: result.score.toFixed(3),
+          liveness: result.liveness,
+          documentValid: result.documentValid,
+          hashGenerated: true
+        }
       }
     });
   } catch (error) {
@@ -462,6 +539,58 @@ router.post('/verify-face', upload.fields([{ name: 'faceImage' }, { name: 'aadha
 
 router.post('/logout', (req, res) => {
   res.json({ success: true });
+});
+
+// DigiLocker OAuth routes
+router.get('/digilocker/authorize', (req, res) => {
+  const { email } = req.query;
+
+  if (!email) {
+    return res.status(400).json({ success: false, error: 'Email required' });
+  }
+
+  // Generate state with email for callback
+  const state = Buffer.from(JSON.stringify({ email, timestamp: Date.now() })).toString('base64');
+  const authUrl = getAuthorizationUrl(state);
+
+  res.json({
+    success: true,
+    authUrl,
+    message: 'Redirect user to DigiLocker for authorization'
+  });
+});
+
+router.get('/digilocker/callback', async (req, res) => {
+  const { code, state } = req.query;
+
+  try {
+    if (!code) {
+      return res.status(400).json({ success: false, error: 'Authorization code missing' });
+    }
+
+    // Decode state to get email
+    const stateData = JSON.parse(Buffer.from(state, 'base64').toString());
+    const { email } = stateData;
+
+    // Exchange code for access token
+    const tokenData = await getAccessToken(code);
+
+    // Store token temporarily (in production, use Redis or database)
+    // For now, return it to frontend
+    res.json({
+      success: true,
+      accessToken: tokenData.access_token,
+      email,
+      message: 'DigiLocker authorization successful. Use this token for verification.'
+    });
+
+  } catch (error) {
+    console.error('DigiLocker callback error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'DigiLocker authorization failed: ' + error.message
+    });
+  }
 });
 
 module.exports = router;

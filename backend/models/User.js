@@ -15,6 +15,18 @@ const userSchema = new mongoose.Schema({
   aadharSalt: { type: String }, // Salt for enhanced security
   faceEmbedding: { type: [Number] }, // 128-dimensional face descriptor
   lastFaceVerification: { type: Date }, // Track last face verification
+
+  // DigiLocker verification fields
+  digilockerVerified: { type: Boolean, default: false },
+  digilockerData: {
+    verified: { type: Boolean, default: false },
+    verifiedAt: { type: Date },
+    aadhaarNumber: { type: String },
+    name: { type: String },
+    dob: { type: String },
+    simulatedMode: { type: Boolean, default: false }
+  },
+
   createdAt: { type: Date, default: Date.now },
 });
 
