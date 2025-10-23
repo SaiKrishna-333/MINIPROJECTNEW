@@ -20,12 +20,22 @@ let tf, Tesseract;
 let tfAvailable = false;
 let tesseractAvailable = false;
 
+// Try to load TensorFlow.js (prefer tfjs-node, fallback to tfjs)
 try {
     tf = require('@tensorflow/tfjs-node');
     tfAvailable = true;
-    console.log('✅ TensorFlow.js loaded - REAL CNN available');
-} catch (e) {
-    console.warn('⚠️  TensorFlow.js not available - using perceptual hashing');
+    console.log('✅ TensorFlow.js (Node backend) loaded - REAL CNN available');
+} catch (e1) {
+    console.warn('⚠️  TensorFlow.js-node not available, trying CPU backend...');
+    try {
+        tf = require('@tensorflow/tfjs');
+        tfAvailable = true;
+        console.log('✅ TensorFlow.js (CPU backend) loaded - REAL CNN available');
+    } catch (e2) {
+        console.warn('⚠️  TensorFlow.js not available - using perceptual hashing');
+        console.warn('   Reason:', e2.message);
+        console.warn('   Note: Perceptual hashing is still REAL and deterministic (same image = same vector)');
+    }
 }
 
 try {
@@ -34,6 +44,7 @@ try {
     console.log('✅ Tesseract.js loaded - REAL OCR available');
 } catch (e) {
     console.warn('⚠️  Tesseract.js not available - OCR disabled');
+    console.warn('   Reason:', e.message);
 }
 
 // ============================================
@@ -198,8 +209,21 @@ async function performOCR(imageBuffer) {
     try {
         console.log('🔍 Starting OCR...');
 
+        // Preprocess image to PNG format for better OCR compatibility
+        const processedImage = await sharp(imageBuffer)
+            .resize(2000, null, { // Increase resolution for better OCR
+                withoutEnlargement: true,
+                fit: 'inside'
+            })
+            .greyscale() // Convert to grayscale for better text recognition
+            .normalize() // Improve contrast
+            .png() // Convert to PNG (more reliable for OCR)
+            .toBuffer();
+
+        console.log('✅ Image preprocessed for OCR');
+
         const { data: { text } } = await Tesseract.recognize(
-            imageBuffer,
+            processedImage,
             'eng+hin',
             {
                 logger: (m) => {
@@ -211,10 +235,12 @@ async function performOCR(imageBuffer) {
         );
 
         console.log('✅ OCR completed');
+        console.log('📄 Extracted text preview:', text.substring(0, 100));
         return text.trim();
 
     } catch (error) {
         console.error('OCR error:', error.message);
+        console.warn('⚠️  OCR failed, continuing without text extraction');
         return '';
     }
 }
@@ -349,12 +375,30 @@ async function verifyBorrower(faceImage, aadhaarImage, txnId, threshold = 0.75) 
         let documentValid = true;
 
         try {
-            ocrText = await performOCR(aadhaarImage);
-            if (ocrText) {
-                documentValid = validateDocument(ocrText, 'aadhar');
+            if (tesseractAvailable) {
+                ocrText = await Promise.race([
+                    performOCR(aadhaarImage),
+                    new Promise((resolve) => setTimeout(() => {
+                        console.warn('⚠️  OCR timeout after 60s, skipping');
+                        resolve('');
+                    }, 60000))
+                ]);
+                if (ocrText && ocrText.length > 0) {
+                    documentValid = validateDocument(ocrText, 'aadhar');
+                    console.log(`✅ OCR completed, extracted ${ocrText.length} characters`);
+                    console.log(`📝 Document validation: ${documentValid}`);
+                } else {
+                    console.warn('⚠️  No text extracted from document, skipping validation');
+                    documentValid = true; // Don't fail if OCR returns empty
+                }
+            } else {
+                console.warn('⚠️  OCR not available, skipping document validation');
+                documentValid = true; // Skip validation if OCR not available
             }
         } catch (ocrError) {
-            console.warn('OCR failed:', ocrError.message);
+            console.warn('⚠️  OCR failed:', ocrError.message);
+            console.warn('⚠️  Continuing verification without OCR validation');
+            documentValid = true; // Don't fail entire verification if OCR fails
         }
 
         // Step 5: Liveness

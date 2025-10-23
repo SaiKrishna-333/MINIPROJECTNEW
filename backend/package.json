@@ -10,7 +10,8 @@
     "postinstall": "node scripts/download-models.js || echo Models will be downloaded on first run"
   },
   "dependencies": {
-    "@tensorflow/tfjs-node": "^4.11.0",
+    "@tensorflow/tfjs": "^4.11.0",
+    "@vladmandic/face-api": "^1.7.12",
     "axios": "^1.6.0",
     "bcryptjs": "^2.4.3",
     "body-parser": "^1.20.2",
