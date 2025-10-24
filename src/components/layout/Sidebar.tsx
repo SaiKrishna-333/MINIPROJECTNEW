@@ -1,31 +1,41 @@
-import { 
-  Home, 
-  PlusCircle, 
-  FileText, 
-  User, 
-  CreditCard, 
-  BarChart3, 
-  Users, 
-  Brain, 
-  Settings,
-  Sparkles
-} from 'lucide-react';
-import { NavLink } from 'react-router-dom';
-import { cn } from '@/lib/utils';
+import {
+  Home,
+  PlusCircle,
+  FileText,
+  User,
+  CreditCard,
+  ShieldCheck,
+  FolderOpen,
+  Sparkles,
+} from "lucide-react";
+import { NavLink } from "react-router-dom";
+import { cn } from "@/lib/utils";
+import { useAuth } from "@/contexts/AuthContext";
 
-const navItems = [
-  { icon: Home, label: 'Dashboard', path: '/dashboard' },
-  { icon: PlusCircle, label: 'Issue Loan', path: '/issue-loan' },
-  { icon: FileText, label: 'All Loans', path: '/all-loans' },
-  { icon: User, label: 'Borrower Loans', path: '/borrower-loans' },
-  { icon: CreditCard, label: 'Repay Loan', path: '/repay-loan' },
-  { icon: BarChart3, label: 'Analytics', path: '/analytics' },
-  { icon: Users, label: 'Peer Connections', path: '/peer-connections' },
-  { icon: Brain, label: 'AI Insights', path: '/ai-insights' },
-  { icon: Settings, label: 'Settings', path: '/settings' },
+const borrowerNavItems = [
+  { icon: Home, label: "Dashboard", path: "/dashboard" },
+  { icon: PlusCircle, label: "Issue Loan", path: "/issue-loan" },
+  { icon: FileText, label: "All Loans", path: "/all-loans" },
+  { icon: User, label: "Borrower Loans", path: "/borrower-loans" },
+  { icon: CreditCard, label: "Repay Loan", path: "/repay-loan" },
+];
+
+const lenderNavItems = [
+  { icon: Home, label: "Dashboard", path: "/dashboard" },
+  { icon: FileText, label: "All Loans", path: "/all-loans" },
+  {
+    icon: ShieldCheck,
+    label: "Validate Documents",
+    path: "/validate-documents",
+  },
+  { icon: FolderOpen, label: "Documents", path: "/documents" },
 ];
 
 export const Sidebar = () => {
+  const { user } = useAuth();
+
+  const navItems = user?.role === "Lender" ? lenderNavItems : borrowerNavItems;
+
   return (
     <aside className="w-64 glass-panel min-h-screen border-r border-glass-border p-6 sticky top-0">
       <div className="flex items-center gap-3 mb-8">

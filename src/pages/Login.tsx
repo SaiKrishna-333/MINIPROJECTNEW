@@ -1,18 +1,19 @@
-import { useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { GlassCard } from '@/components/ui/glass-card';
-import { useAuth } from '@/contexts/AuthContext';
-import { useNavigate, Link } from 'react-router-dom';
-import { LogIn, User, Lock, ArrowLeft } from 'lucide-react';
-import { motion } from 'framer-motion';
-import { toast } from 'sonner';
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { GlassCard } from "@/components/ui/glass-card";
+import { useAuth } from "@/contexts/AuthContext";
+import { useNavigate, Link } from "react-router-dom";
+import { LogIn, User, Lock, ArrowLeft } from "lucide-react";
+import { motion } from "framer-motion";
+import { toast } from "sonner";
+import { tokenManager } from "@/lib/api";
 
 const Login = () => {
   const [formData, setFormData] = useState({
-    uniqueId: '',
-    password: '',
+    uniqueId: "",
+    password: "",
   });
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
@@ -26,29 +27,35 @@ const Login = () => {
     e.preventDefault();
 
     if (!formData.uniqueId || !formData.password) {
-      toast.error('Please enter unique ID and password');
+      toast.error("Please enter unique ID and password");
       return;
     }
 
     setLoading(true);
 
     try {
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData),
       });
 
       const data = await response.json();
+
       if (data.success) {
-        localStorage.setItem('token', data.token);
-        toast.success('Login successful!');
-        navigate('/dashboard');
+        // Backend returns { success, data: { token, user } }
+        const token = data?.data?.token ?? data?.token;
+        if (!token) {
+          throw new Error("Missing token in response");
+        }
+        tokenManager.set(token);
+        toast.success("Login successful!");
+        navigate("/dashboard");
       } else {
-        toast.error(data.error || 'Login failed');
+        toast.error(data.error || "Login failed");
       }
     } catch (error) {
-      toast.error('Login error');
+      toast.error("Login error");
     }
 
     setLoading(false);
@@ -59,7 +66,10 @@ const Login = () => {
       {/* Background Effects */}
       <div className="absolute inset-0">
         <div className="absolute w-96 h-96 bg-gold/10 rounded-full blur-3xl top-0 right-0 animate-float" />
-        <div className="absolute w-96 h-96 bg-gold/5 rounded-full blur-3xl bottom-0 left-0 animate-float" style={{ animationDelay: '2s' }} />
+        <div
+          className="absolute w-96 h-96 bg-gold/5 rounded-full blur-3xl bottom-0 left-0 animate-float"
+          style={{ animationDelay: "2s" }}
+        />
       </div>
 
       <motion.div
@@ -68,7 +78,10 @@ const Login = () => {
         transition={{ duration: 0.5 }}
         className="w-full max-w-md relative z-10"
       >
-        <Link to="/" className="inline-flex items-center gap-2 text-muted-foreground hover:text-foreground mb-6 transition-colors">
+        <Link
+          to="/"
+          className="inline-flex items-center gap-2 text-muted-foreground hover:text-foreground mb-6 transition-colors"
+        >
           <ArrowLeft className="w-4 h-4" />
           Back to home
         </Link>
@@ -79,7 +92,9 @@ const Login = () => {
               <LogIn className="w-8 h-8 text-background" />
             </div>
             <h1 className="text-3xl font-bold text-gold-gradient">Login</h1>
-            <p className="text-muted-foreground">Enter your unique ID and password</p>
+            <p className="text-muted-foreground">
+              Enter your unique ID and password
+            </p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -121,7 +136,7 @@ const Login = () => {
               className="w-full bg-gold-gradient hover:opacity-90 text-background font-semibold"
               disabled={loading}
             >
-              {loading ? 'Signing in...' : 'Sign In'}
+              {loading ? "Signing in..." : "Sign In"}
             </Button>
           </form>
 

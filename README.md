@@ -45,6 +45,7 @@ A **peer-to-peer lending platform** connecting borrowers (farmers, small busines
 **DigiLocker + Biometric Security System**
 
 **During Signup:**
+
 1. ✅ DigiLocker validates Aadhaar number (Verhoeff algorithm + government database)
 2. ✅ Face captured and stored as 128-D embedding
 3. ✅ Aadhaar document converted to SHA-256 hash
@@ -52,6 +53,7 @@ A **peer-to-peer lending platform** connecting borrowers (farmers, small busines
 5. ✅ OTP sent for two-factor authentication
 
 **During Loan:**
+
 - 🔐 Live face photo compared with stored embedding
 - 🛡️ Multiple security layers prevent fraud
 
@@ -67,7 +69,7 @@ A **peer-to-peer lending platform** connecting borrowers (farmers, small busines
 // Automatic mode detection
 if (Real API Keys Present) {
   → Contact DigiLocker government API
-  → Verify Aadhaar authenticity  
+  → Verify Aadhaar authenticity
   → Match name with official records
 } else {
   → Simulation mode (development/testing)
@@ -77,6 +79,7 @@ if (Real API Keys Present) {
 ```
 
 **Features:**
+
 - ✅ Verhoeff algorithm (mathematical checksum)
 - ✅ Government database verification (production)
 - ✅ Simulation mode for testing
@@ -98,7 +101,7 @@ User Form:
 - Aadhaar: "647774509944"
 
 OCR Extraction from Image:
-- Extracted Name: "SAI KRISHNA S"  
+- Extracted Name: "SAI KRISHNA S"
 - Extracted Aadhaar: "647774509944"
 
 Verification:
@@ -113,6 +116,7 @@ OCR:  Name = "Real Owner", Aadhaar = "647774509944"
 ```
 
 **Benefits:**
+
 - 🛡️ Detects stolen Aadhaar cards
 - 🛡️ Prevents identity fraud
 - 🛡️ Cross-validates entered vs uploaded data
@@ -165,6 +169,7 @@ OCR:  Name = "Real Owner", Aadhaar = "647774509944"
 ## 🛠️ Technology Stack
 
 ### Frontend
+
 ```
 React 18.x          - UI framework
 TypeScript          - Type safety
@@ -174,6 +179,7 @@ Shadcn/ui           - Components
 ```
 
 ### Backend
+
 ```
 Node.js 18.x        - Runtime
 Express 4.x         - Web framework
@@ -183,6 +189,7 @@ Multer              - File uploads
 ```
 
 ### Biometric & ML
+
 ```
 TensorFlow.js 4.x   - CNN face recognition
 Tesseract.js 5.x    - OCR engine
@@ -234,10 +241,12 @@ DIGILOCKER_REDIRECT_URI=http://localhost:3000/api/auth/digilocker/callback
 ### For Borrowers
 
 1. **Sign Up**
+
    - Fill personal details
    - Choose role: "Borrower"
 
 2. **Verification**
+
    - Upload face photo
    - Upload Aadhaar card image
    - System performs:
@@ -248,6 +257,7 @@ DIGILOCKER_REDIRECT_URI=http://localhost:3000/api/auth/digilocker/callback
    - Enter OTP
 
 3. **Request Loan**
+
    - Amount, duration, purpose
    - AI matches with suitable lender
 
@@ -260,6 +270,7 @@ DIGILOCKER_REDIRECT_URI=http://localhost:3000/api/auth/digilocker/callback
 1. **Sign Up & Verify** (same process)
 
 2. **Browse Requests**
+
    - See borrower profiles
    - Check credit scores
    - View verification status
@@ -376,6 +387,7 @@ rural-gold-connect/
 ## 🐛 Troubleshooting
 
 **Backend not starting?**
+
 ```bash
 # Check if MongoDB is running
 net start MongoDB
@@ -385,6 +397,7 @@ netstat -ano | findstr :3000
 ```
 
 **Frontend not loading?**
+
 ```bash
 # Clear cache
 rm -rf node_modules
@@ -392,6 +405,7 @@ npm install
 ```
 
 **OCR not working?**
+
 ```bash
 # Install Tesseract
 cd backend

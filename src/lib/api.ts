@@ -2,7 +2,7 @@
 // Replace with your actual backend URL
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
 
-interface ApiResponse<T = any> {
+interface ApiResponse<T = unknown> {
   success: boolean;
   data?: T;
   message?: string;
@@ -11,9 +11,15 @@ interface ApiResponse<T = any> {
 
 // Token management
 export const tokenManager = {
-  get: () => localStorage.getItem('auth_token'),
-  set: (token: string) => localStorage.setItem('auth_token', token),
-  remove: () => localStorage.removeItem('auth_token'),
+  get: () => localStorage.getItem('auth_token') || localStorage.getItem('token'),
+  set: (token: string) => {
+    localStorage.setItem('auth_token', token);
+    localStorage.setItem('token', token);
+  },
+  remove: () => {
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('token');
+  },
 };
 
 // API request helper
@@ -120,7 +126,7 @@ export const loanApi = {
   },
 
   getAll: async (filters?: { status?: string; borrowerId?: string }) => {
-    const queryParams = new URLSearchParams(filters as any).toString();
+    const queryParams = filters ? new URLSearchParams(filters as Record<string, string>).toString() : '';
     return apiRequest(`/loans${queryParams ? `?${queryParams}` : ''}`);
   },
 
@@ -132,10 +138,9 @@ export const loanApi = {
     return apiRequest(`/loans/borrower/${borrowerId}`);
   },
 
-  repay: async (loanId: string, amount: number) => {
-    return apiRequest(`/loans/${loanId}/repay`, {
+  fund: async (loanId: string) => {
+    return apiRequest(`/loans/${loanId}/fund`, {
       method: 'POST',
-      body: JSON.stringify({ amount }),
     });
   },
 };
@@ -168,7 +173,7 @@ export const userApi = {
     return apiRequest('/user/profile');
   },
 
-  updateProfile: async (profileData: any) => {
+  updateProfile: async (profileData: Record<string, unknown>) => {
     return apiRequest('/user/profile', {
       method: 'PUT',
       body: JSON.stringify(profileData),

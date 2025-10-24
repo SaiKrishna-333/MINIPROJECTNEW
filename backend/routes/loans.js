@@ -11,13 +11,18 @@ const payuKey = process.env.PAYU_KEY;
 const payuSalt = process.env.PAYU_SALT;
 const payuMerchantId = process.env.PAYU_MERCHANT_ID;
 
-// Create loan
+// Create loan (Borrower-only)
 router.post('/create', authenticateToken, async (req, res) => {
   const { amount, duration, interestRate, purpose } = req.body;
   const userId = req.user.id;
 
   if (!amount || !duration || !interestRate || !purpose) {
     return res.status(400).json({ success: false, error: 'All fields are required' });
+  }
+
+  const user = await User.findById(userId);
+  if (!user || user.role !== 'Borrower') {
+    return res.status(403).json({ success: false, error: 'Only borrowers can create loans' });
   }
 
   const newLoan = new Loan({
@@ -72,9 +77,14 @@ router.get('/borrower/:borrowerId', async (req, res) => {
   });
 });
 
-// Disburse loan (PayU payment)
+// Disburse loan (PayU payment) - Lender only
 router.post('/:id/disburse', authenticateToken, async (req, res) => {
   const loan = await Loan.findById(req.params.id);
+  const user = await User.findById(req.user.id);
+
+  if (!user || user.role !== 'Lender') {
+    return res.status(403).json({ success: false, error: 'Only lenders can disburse loans' });
+  }
   if (!loan || loan.status !== 'Pending') {
     return res.status(400).json({ success: false, error: 'Invalid loan' });
   }
@@ -101,11 +111,15 @@ router.post('/:id/disburse', authenticateToken, async (req, res) => {
   res.json({ success: true, paymentUrl: response.data });
 });
 
-// Repay loan (PayU payment)
+// Repay loan (PayU payment) - Borrower only
 router.post('/:id/repay-payment', authenticateToken, async (req, res) => {
   const { amount } = req.body;
   const loan = await Loan.findById(req.params.id);
+  const user = await User.findById(req.user.id);
 
+  if (!user || user.role !== 'Borrower') {
+    return res.status(403).json({ success: false, error: 'Only borrowers can make repayment payments' });
+  }
   if (!loan || loan.status !== 'Active') {
     return res.status(400).json({ success: false, error: 'Loan not active' });
   }
@@ -136,13 +150,17 @@ router.post('/:id/repay-payment', authenticateToken, async (req, res) => {
   res.json({ success: true, paymentUrl: response.data });
 });
 
-// Repay loan (existing)
+// Repay loan (Borrower-only)
 router.post('/:id/repay', authenticateToken, async (req, res) => {
   const { amount } = req.body;
   const loan = await Loan.findById(req.params.id);
+  const user = await User.findById(req.user.id);
 
   if (!loan) {
     return res.status(404).json({ success: false, error: 'Loan not found' });
+  }
+  if (!user || user.role !== 'Borrower') {
+    return res.status(403).json({ success: false, error: 'Only borrowers can repay loans' });
   }
 
   loan.repaidAmount += amount;
@@ -157,6 +175,36 @@ router.post('/:id/repay', authenticateToken, async (req, res) => {
     success: true,
     data: loan,
   });
+});
+
+// Fund loan (Lender-only, minimal stub)
+router.post('/:id/fund', authenticateToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user || user.role !== 'Lender') {
+      return res.status(403).json({ success: false, error: 'Only lenders can fund loans' });
+    }
+
+    const loan = await Loan.findById(req.params.id);
+    if (!loan) {
+      return res.status(404).json({ success: false, error: 'Loan not found' });
+    }
+    if (loan.status !== 'Pending') {
+      return res.status(400).json({ success: false, error: 'Loan must be Pending to fund' });
+    }
+
+    loan.lenderId = user._id; // record lender association
+    await loan.save();
+
+    return res.json({
+      success: true,
+      message: 'Funding recorded. Awaiting payment integration.',
+      data: loan,
+    });
+  } catch (e) {
+    console.error('Fund loan error:', e);
+    return res.status(500).json({ success: false, error: 'Failed to record funding' });
+  }
 });
 
 module.exports = router;

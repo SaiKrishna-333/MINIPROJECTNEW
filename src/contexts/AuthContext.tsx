@@ -1,7 +1,7 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { authApi, tokenManager } from '@/lib/api';
-import { useNavigate } from 'react-router-dom';
-import { toast } from 'sonner';
+import React, { createContext, useContext, useState, useEffect } from "react";
+import { authApi, tokenManager } from "@/lib/api";
+import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 
 interface User {
   id: string;
@@ -10,6 +10,7 @@ interface User {
   walletAddress: string;
   kycVerified: boolean;
   faceVerified: boolean;
+  role: "Borrower" | "Lender";
 }
 
 interface AuthContextType {
@@ -23,7 +24,9 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
+  children,
+}) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
@@ -50,30 +53,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = async (email: string, password: string): Promise<boolean> => {
     const response = await authApi.login({ email, password });
-    
+
     if (response.success && response.data) {
       const data = response.data as any;
       tokenManager.set(data.token);
       setUser(data.user);
-      toast.success('Welcome back!');
+      toast.success("Welcome back!");
       return true;
     } else {
-      toast.error(response.error || 'Login failed');
+      toast.error(response.error || "Login failed");
       return false;
     }
   };
 
   const register = async (userData: any): Promise<boolean> => {
     const response = await authApi.register(userData);
-    
+
     if (response.success && response.data) {
       const data = response.data as any;
       tokenManager.set(data.token);
       setUser(data.user);
-      toast.success('Account created successfully!');
+      toast.success("Account created successfully!");
       return true;
     } else {
-      toast.error(response.error || 'Registration failed');
+      toast.error(response.error || "Registration failed");
       return false;
     }
   };
@@ -81,8 +84,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logout = () => {
     authApi.logout();
     setUser(null);
-    toast.success('Logged out successfully');
-    navigate('/');
+    toast.success("Logged out successfully");
+    navigate("/");
   };
 
   return (
@@ -104,7 +107,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
+    throw new Error("useAuth must be used within an AuthProvider");
   }
   return context;
 };
